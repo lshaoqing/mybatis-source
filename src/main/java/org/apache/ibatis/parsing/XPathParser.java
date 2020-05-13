@@ -41,15 +41,58 @@ import org.xml.sax.SAXException;
 import org.xml.sax.SAXParseException;
 
 /**
+ * document 属性，XML 被解析后，生成的 org.w3c.dom.Document 对象。
+ * validation 属性，是否校验 XML 。一般情况下，值为 true 。
+ * entityResolver 属性，org.xml.sax.EntityResolver 对象，XML 实体解析器。
+ * 默认情况下，对 XML 进行校验时，会基于 XML 文档开始位置指定的 DTD 文件或 XSD 文件。
+ * 例如说，解析 mybatis-config.xml 配置文件时，会加载 http://mybatis.org/dtd/mybatis-3-config.dtd 这个 DTD 文件。
+ * 但是，如果每个应用启动都从网络加载该 DTD 文件，势必在弱网络下体验非常差，甚至说应用部署在无网络的环境下，
+ * 还会导致下载不下来，那么就会出现 XML 校验失败的情况。
+ * 所以，在实际场景下，MyBatis 自定义了 EntityResolver 的实现，达到使用本地 DTD 文件，
+ * 从而避免下载网络 DTD 文件的效果。
+ * 另外，Spring 也自定义了 EntityResolver 的实现
+ * xpath 属性，javax.xml.xpath.XPath 对象，用于查询 XML 中的节点和元素。
+ * variables 属性，变量 Properties 对象，用来替换需要动态配置的属性值。例如：
+ *
+ * <dataSource type="POOLED">
+ *   <property name="driver" value="${driver}"/>
+ *   <property name="url" value="${url}"/>
+ *   <property name="username" value="${username}"/>
+ *   <property name="password" value="${password}"/>
+ * </dataSource>
+ * variables 的来源，即可以在常用的 Java Properties 文件中配置，也可以使用 MyBatis <property /> 标签中配置。例如：
+ *
+ * <properties resource="org/mybatis/example/config.properties">
+ *   <property name="username" value="dev_user"/>
+ *   <property name="password" value="F2Fa3!33TYyg"/>
+ * </properties>
+ * 这里配置的 username 和 password 属性，就可以替换上面的 ${username} 和 ${password} 这两个动态属性。
+ */
+/**
  * @author Clinton Begin
  * @author Kazuki Shimizu
  */
 public class XPathParser {
 
+  /**
+   * XML Document对象
+   */
   private final Document document;
+  /**
+   * 是否校验
+   */
   private boolean validation;
+  /**
+   * XML 解析实体类
+   */
   private EntityResolver entityResolver;
+  /**
+   * 变量 properties对象
+   */
   private Properties variables;
+  /**
+   * java xpath 对象
+   */
   private XPath xpath;
 
   public XPathParser(String xml) {
@@ -141,7 +184,9 @@ public class XPathParser {
   }
 
   public String evalString(Object root, String expression) {
+    //得到值  XPathConstants.STRING 表示返回的是string类型值
     String result = (String) evaluate(expression, root, XPathConstants.STRING);
+    //如果result为动态值，基于variables替换动态值
     result = PropertyParser.parse(result, variables);
     return result;
   }
@@ -200,7 +245,9 @@ public class XPathParser {
 
   public List<XNode> evalNodes(Object root, String expression) {
     List<XNode> xnodes = new ArrayList<>();
+    //获取Nodes数组
     NodeList nodes = (NodeList) evaluate(expression, root, XPathConstants.NODESET);
+    //封装成XNode数组
     for (int i = 0; i < nodes.getLength(); i++) {
       xnodes.add(new XNode(this, nodes.item(i), variables));
     }
@@ -219,6 +266,13 @@ public class XPathParser {
     return new XNode(this, node, variables);
   }
 
+  /**
+   * 获取指定元素的值
+   * @param expression 表达式
+   * @param root 指定节点
+   * @param returnType 返回类型
+   * @return 值
+   */
   private Object evaluate(String expression, Object root, QName returnType) {
     try {
       return xpath.evaluate(expression, root, returnType);
@@ -226,13 +280,18 @@ public class XPathParser {
       throw new BuilderException("Error evaluating XPath.  Cause: " + e, e);
     }
   }
-
+  /**
+   * 创建Document对象
+   * @param inputSource  xml的inputSource对象
+   * @return Document
+   */
   private Document createDocument(InputSource inputSource) {
     // important: this must only be called AFTER common constructor
     try {
+      //创建DocumentBuilderFactory对象
       DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
       factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-      factory.setValidating(validation);
+      factory.setValidating(validation); //设置是否校验xml
 
       factory.setNamespaceAware(false);
       factory.setIgnoringComments(true);
@@ -240,9 +299,10 @@ public class XPathParser {
       factory.setCoalescing(false);
       factory.setExpandEntityReferences(true);
 
+      //创建DocumentBuilder对象
       DocumentBuilder builder = factory.newDocumentBuilder();
-      builder.setEntityResolver(entityResolver);
-      builder.setErrorHandler(new ErrorHandler() {
+      builder.setEntityResolver(entityResolver); //设置实体解析器
+      builder.setErrorHandler(new ErrorHandler() { //空实现
         @Override
         public void error(SAXParseException exception) throws SAXException {
           throw exception;
@@ -268,6 +328,7 @@ public class XPathParser {
     this.validation = validation;
     this.entityResolver = entityResolver;
     this.variables = variables;
+    //创建Xpath对象
     XPathFactory factory = XPathFactory.newInstance();
     this.xpath = factory.newXPath();
   }

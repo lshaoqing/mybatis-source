@@ -48,24 +48,63 @@ import org.apache.ibatis.reflection.property.PropertyNamer;
  * @author Clinton Begin
  */
 public class Reflector {
-
+  /**
+   * 对应的类
+   */
   private final Class<?> type;
+  /**
+   * 可读属性数组
+   */
   private final String[] readablePropertyNames;
+  /**
+   * 可写属性数组
+   */
   private final String[] writablePropertyNames;
+  /**
+   * 属性对应的setting方法映射
+   *  key为属性名称
+   *  value为Invoker对象
+   */
   private final Map<String, Invoker> setMethods = new HashMap<>();
+  /**
+   * 属性对应的getting方法映射
+   *  key为属性名称
+   *  value为Invoker对象
+   */
   private final Map<String, Invoker> getMethods = new HashMap<>();
+  /**
+   * 属性对应setting方法参数的映射 {@link #setMethods}
+   *  key为属性名称
+   *  value为返回值类型
+   */
   private final Map<String, Class<?>> setTypes = new HashMap<>();
+  /**
+   * 属性对应getting方法参数的映射 {@link #getMethods}
+   *  key为属性名称
+   *  value为返回值类型
+   */
   private final Map<String, Class<?>> getTypes = new HashMap<>();
+  /**
+   * 默认构造方法
+   */
   private Constructor<?> defaultConstructor;
-
+  /**
+   * 不区分大小写的属性集
+   */
   private Map<String, String> caseInsensitivePropertyMap = new HashMap<>();
 
   public Reflector(Class<?> clazz) {
+    //初始化对应的类
     type = clazz;
+    //初始化defaultConstructor
     addDefaultConstructor(clazz);
+    //初始化getMethods 和getTypes， 通过遍历getting方法
     addGetMethods(clazz);
+    //初始化setMethods和setTypes， 通过遍历setting方法
     addSetMethods(clazz);
+   // 初始化 getMethods + getTypes 和 setMethods + setTypes ，通过遍历 fields 属性。
     addFields(clazz);
+    // 初始化 readablePropertyNames、writeablePropertyNames、caseInsensitivePropertyMap 属性
     readablePropertyNames = getMethods.keySet().toArray(new String[0]);
     writablePropertyNames = setMethods.keySet().toArray(new String[0]);
     for (String propName : readablePropertyNames) {
@@ -77,8 +116,11 @@ public class Reflector {
   }
 
   private void addDefaultConstructor(Class<?> clazz) {
+    //获取所有的构造方法
     Constructor<?>[] constructors = clazz.getDeclaredConstructors();
+    //根据参数列表判断是否是无参构造方法
     Arrays.stream(constructors).filter(constructor -> constructor.getParameterTypes().length == 0)
+      // 如果构造方法可以访问，赋值给 defaultConstructor
       .findAny().ifPresent(constructor -> this.defaultConstructor = constructor);
   }
 
@@ -90,7 +132,12 @@ public class Reflector {
     resolveGetterConflicts(conflictingGetters);
   }
 
+  /**
+   * 解决 getting 冲突方法。最终，一个属性，只保留一个对应的方法。
+   * @param conflictingGetters
+   */
   private void resolveGetterConflicts(Map<String, List<Method>> conflictingGetters) {
+    // 遍历每个属性，查找其最匹配的方法。因为子类可以覆写父类的方法，所以一个属性，可能对应多个 getting 方法
     for (Entry<String, List<Method>> entry : conflictingGetters.entrySet()) {
       Method winner = null;
       String propName = entry.getKey();
@@ -294,9 +341,9 @@ public class Reflector {
   }
 
   private void addUniqueMethods(Map<String, Method> uniqueMethods, Method[] methods) {
-    for (Method currentMethod : methods) {
+    for (Method currentMethod : methods) {// 忽略 bridge 方法，参见 https://www.zhihu.com/question/54895701/answer/141623158 文章
       if (!currentMethod.isBridge()) {
-        String signature = getSignature(currentMethod);
+        String signature = getSignature(currentMethod); //获得方法签名
         // check to see if the method is already known
         // if it is known, then an extended class must have
         // overridden a method
@@ -307,6 +354,10 @@ public class Reflector {
     }
   }
 
+  /**
+   * 格式：returnType#方法名:参数名1,参数名2,参数名3 。
+   * 例如：void#checkPackageAccess:java.lang.ClassLoader,boolean
+   */
   private String getSignature(Method method) {
     StringBuilder sb = new StringBuilder();
     Class<?> returnType = method.getReturnType();
